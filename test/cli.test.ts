@@ -47,13 +47,15 @@ test("unknown command exits 2 and help exits 0", () => {
   assert.match(h.out.join("\n"), /Usage:/);
 });
 
-test("legacy v0.1 task file without priority loads and lists unchanged", () => {
+test("legacy v0.1 task file without priority loads, lists as medium, and is not rewritten", () => {
   const h = harness();
   const path = h.env.TODO_FILE!;
   const legacy = { version: 1, nextId: 2, tasks: [{ id: 1, title: "legacy", status: "open", createdAt: "2026-01-01T00:00:00.000Z" }] };
   writeFileSync(path, JSON.stringify(legacy));
   assert.equal(h.exec("list", "--json"), 0);
-  assert.deepEqual(JSON.parse(h.out.at(-1)!), legacy.tasks);
+  assert.deepEqual(JSON.parse(h.out.at(-1)!), legacy.tasks.map((t) => ({ ...t, priority: "medium" })));
+  h.exec("list");
+  assert.equal(h.out.at(-1), "[ ]   #1 legacy");
   assert.deepEqual(JSON.parse(readFileSync(path, "utf8")), legacy);
 });
 
@@ -70,4 +72,52 @@ test("invalid priority fails without writing a task file", () => {
   assert.equal(h.exec("add", "--priority", "urgent", "task"), 1);
   assert.match(h.err.join("\n"), /Valid levels: low, medium, high/);
   assert.equal(existsSync(h.env.TODO_FILE!), false);
+});
+
+test("prioritise updates the task and prints the change", () => {
+  const h = harness();
+  h.exec("add", "tidy desk");
+  assert.equal(h.exec("prioritise", "1", "high"), 0);
+  assert.match(h.out.at(-1)!, /#1: medium → high/);
+  h.exec("list", "--json");
+  assert.equal(JSON.parse(h.out.at(-1)!)[0].priority, "high");
+});
+
+test("prioritise with unknown id or invalid level fails and leaves the file unchanged", () => {
+  const h = harness();
+  h.exec("add", "tidy desk");
+  const before = readFileSync(h.env.TODO_FILE!, "utf8");
+  assert.equal(h.exec("prioritise", "9", "high"), 1);
+  assert.match(h.err.at(-1)!, /No task with id 9/);
+  assert.equal(h.exec("prioritise", "1", "urgent"), 1);
+  assert.match(h.err.at(-1)!, /Valid levels/);
+  assert.equal(readFileSync(h.env.TODO_FILE!, "utf8"), before);
+});
+
+test("list orders open tasks high → medium → low then id, done tasks last", () => {
+  const h = harness();
+  h.exec("add", "--priority", "low", "a");
+  h.exec("add", "b");
+  h.exec("add", "--priority", "high", "c");
+  h.exec("add", "--priority", "high", "d");
+  h.exec("done", "3");
+  h.exec("list", "--json");
+  assert.deepEqual(JSON.parse(h.out.at(-1)!).map((t: { title: string }) => t.title), ["d", "b", "a", "c"]);
+});
+
+test("human list marks high with ! and low with ↓; json includes priority", () => {
+  const h = harness();
+  h.exec("add", "--priority", "high", "hot");
+  h.exec("add", "--priority", "low", "cold");
+  h.exec("add", "warm");
+  h.exec("list");
+  assert.deepEqual(h.out.slice(-3), ["[ ] ! #1 hot", "[ ]   #3 warm", "[ ] ↓ #2 cold"]);
+  h.exec("list", "--json");
+  assert.deepEqual(JSON.parse(h.out.at(-1)!).map((t: { priority: string }) => t.priority), ["high", "medium", "low"]);
+});
+
+test("help documents prioritise", () => {
+  const h = harness();
+  h.exec("help");
+  assert.match(h.out.join("\n"), /todo prioritise <id> <high\|medium\|low>/);
 });

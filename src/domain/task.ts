@@ -38,3 +38,29 @@ export function completeTask(list: TaskList, id: number, now: Date): Task {
   }
   return task;
 }
+
+export const PRIORITIES: readonly TaskPriority[] = ["high", "medium", "low"];
+
+export function parsePriority(value: string | undefined): TaskPriority {
+  if (value === "low" || value === "medium" || value === "high") return value;
+  throw new Error("Invalid priority. Valid levels: low, medium, high.");
+}
+
+/** Tasks written before priorities existed read as medium. */
+export function priorityOf(task: Task): TaskPriority {
+  return task.priority ?? "medium";
+}
+
+export function setPriority(list: TaskList, id: number, priority: TaskPriority): { task: Task; previous: TaskPriority } {
+  const task = list.tasks.find((t) => t.id === id);
+  if (!task) throw new Error(`No task with id ${id}.`);
+  const previous = priorityOf(task);
+  task.priority = priority;
+  return { task, previous };
+}
+
+/** Open tasks first (high → medium → low, then id), done tasks last (by id). */
+export function sortTasks(tasks: readonly Task[]): Task[] {
+  const rank = (t: Task) => (t.status === "done" ? PRIORITIES.length : PRIORITIES.indexOf(priorityOf(t)));
+  return [...tasks].sort((a, b) => rank(a) - rank(b) || a.id - b.id);
+}
