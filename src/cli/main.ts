@@ -7,7 +7,8 @@ const HELP = `todo — a local command-line todo list
 Usage:
   todo add [--priority <high|medium|low>] [--due <date>] [--tag <tag>]... <title...>
                                                        Add a task (default: medium)
-  todo list [--open | --done] [--tag <tag>] [--json]   List tasks, most important first
+  todo list [--open | --done] [--tag <tag>] [--search <text>] [--json]
+                                                       List tasks, most important first
   todo done <id>                                       Mark a task as done
   todo prioritise <id> <high|medium|low>               Change a task's priority
   todo due <id> <date|none>                            Set or clear a task's due date
@@ -17,6 +18,7 @@ Usage:
 
 <tag> is a word of letters, digits and hyphens (e.g. work); repeat --tag or
 use commas (--tag work,home) for several.
+--search <text> shows only tasks whose title contains <text> (any case).
 <date> is YYYY-MM-DD, today, or tomorrow. Open tasks due before today are
 OVERDUE and listed first.
 
@@ -35,6 +37,17 @@ function formatTask(t: Task, today: string): string {
   const tags = t.tags?.length ? ` [${t.tags.join(", ")}]` : "";
   const due = t.dueDate === undefined ? "" : ` (due ${t.dueDate}${isOverdue(t, today) ? ", OVERDUE" : ""})`;
   return `${t.status === "done" ? "[x]" : "[ ]"} ${MARKER[priorityOf(t)]} #${t.id} ${t.title}${tags}${due}`;
+}
+
+function parseSearch(rest: string[]): string | undefined {
+  const usage = "Usage: todo list --search <text>";
+  const i = rest.indexOf("--search");
+  if (i === -1) return undefined;
+  if (rest.indexOf("--search", i + 1) !== -1) throw new Error(usage);
+  const text = rest[i + 1]?.trim() ?? "";
+  // A following flag (e.g. `--search --json`) means the value is missing.
+  if (text === "" || text.startsWith("--")) throw new Error(usage);
+  return text;
 }
 
 function parseSingleTag(value: string | undefined): string {
@@ -80,15 +93,20 @@ export function run(argv: string[], io: Io): number {
         const tagIndex = rest.indexOf("--tag");
         if (tagIndex !== -1 && rest.indexOf("--tag", tagIndex + 1) !== -1) throw new Error("Usage: todo list --tag <tag> (one tag)");
         const tag = tagIndex === -1 ? undefined : parseSingleTag(rest[tagIndex + 1]);
+        const search = parseSearch(rest);
+        const needle = search?.toLowerCase();
         const list = load(path);
         const today = localDate(io.now());
         const tasks = sortTasks(list.tasks, today)
           .filter((t) => (onlyOpen ? t.status === "open" : onlyDone ? t.status === "done" : true))
-          .filter((t) => tag === undefined || (t.tags ?? []).includes(tag));
+          .filter((t) => tag === undefined || (t.tags ?? []).includes(tag))
+          .filter((t) => needle === undefined || t.title.toLowerCase().includes(needle));
         if (rest.includes("--json")) {
           io.out(JSON.stringify(tasks.map((t) => ({ ...t, priority: priorityOf(t), tags: t.tags ?? [], overdue: isOverdue(t, today) }))));
         } else if (list.tasks.length === 0) {
           io.out("No tasks yet. Add one with: todo add <title>");
+        } else if (tasks.length === 0 && search !== undefined) {
+          io.out(`No tasks match "${search}".`);
         } else if (tasks.length === 0 && tag !== undefined) {
           io.out(`No ${onlyOpen ? "open " : onlyDone ? "completed " : ""}tasks tagged ${tag}.`);
         } else if (tasks.length === 0) {

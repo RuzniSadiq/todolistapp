@@ -557,3 +557,119 @@ test("help documents --tag, tag, untag, and list --tag (#17 AC6)", () => {
   assert.match(help, /todo untag <id> <tag\.\.\.>/);
   assert.match(help, /todo list .*\[--tag <tag>\]/);
 });
+
+// #31 — list --search.
+
+function searchFixture() {
+  const h = harness();
+  h.exec("add", "Buy MILK");
+  h.exec("add", "--priority", "high", "--tag", "home", "milkshake");
+  h.exec("add", "walk dog");
+  h.exec("add", "--priority", "low", "--due", "2025-12-01", "milk run");
+  h.exec("add", "--tag", "work", "oat milk");
+  h.exec("done", "5");
+  h.out.length = 0;
+  return h;
+}
+
+test("list --search matches title substrings case-insensitively (#31 AC1)", () => {
+  const h = searchFixture();
+  assert.equal(h.exec("list", "--search", "milk"), 0);
+  assert.deepEqual(h.out, [
+    "[ ] ↓ #4 milk run (due 2025-12-01, OVERDUE)",
+    "[ ] ! #2 milkshake [home]",
+    "[ ]   #1 Buy MILK",
+    "[x]   #5 oat milk [work]",
+  ]);
+  h.out.length = 0;
+  assert.equal(h.exec("list", "--search", "MiLk"), 0);
+  assert.equal(h.out.length, 4);
+  h.out.length = 0;
+  assert.equal(h.exec("list", "--search", "dog"), 0);
+  assert.deepEqual(h.out, ["[ ]   #3 walk dog"]);
+});
+
+test("list --search keeps order and combines with --open/--done/--tag/--json (#31 AC2)", () => {
+  const h = searchFixture();
+  const ids = (...args: string[]) => {
+    assert.equal(h.exec("list", ...args, "--json"), 0);
+    return JSON.parse(h.out.at(-1)!).map((t: { id: number }) => t.id);
+  };
+  assert.deepEqual(ids("--search", "milk"), [4, 2, 1, 5]);
+  assert.deepEqual(ids("--open", "--search", "milk"), [4, 2, 1]);
+  assert.deepEqual(ids("--search", "milk", "--done"), [5]);
+  assert.deepEqual(ids("--tag", "home", "--search", "milk"), [2]);
+  assert.deepEqual(ids("--search", "nothing"), []);
+  h.exec("list", "--search", "shake", "--json");
+  assert.deepEqual(JSON.parse(h.out.at(-1)!), [
+    { id: 2, title: "milkshake", status: "open", createdAt: "2026-01-01T00:00:00.000Z", priority: "high", tags: ["home"], overdue: false },
+  ]);
+  h.out.length = 0;
+  assert.equal(h.exec("list", "--done", "--search", "milk"), 0);
+  assert.deepEqual(h.out, ["[x]   #5 oat milk [work]"]);
+});
+
+test("list --search with no matches says so; an empty file keeps the no-tasks message (#31 AC3)", () => {
+  const h = searchFixture();
+  assert.equal(h.exec("list", "--search", "zebra"), 0);
+  assert.deepEqual(h.out, ['No tasks match "zebra".']);
+  h.out.length = 0;
+  assert.equal(h.exec("list", "--open", "--search", "oat"), 0);
+  assert.deepEqual(h.out, ['No tasks match "oat".']);
+  const empty = harness();
+  assert.equal(empty.exec("list", "--search", "milk"), 0);
+  assert.deepEqual(empty.out, ["No tasks yet. Add one with: todo add <title>"]);
+});
+
+test("list --search rejects a missing, blank or repeated value without touching the file (#31 AC4)", () => {
+  const h = searchFixture();
+  const path = h.env.TODO_FILE!;
+  const before = readFileSync(path, "utf8");
+  for (const args of [["--search"], ["--search", ""], ["--search", "   "], ["--search", "milk", "--search", "dog"], ["--search", "milk", "--search"]]) {
+    h.err.length = 0;
+    assert.equal(h.exec("list", ...args), 1, JSON.stringify(args));
+    assert.match(h.err.join("\n"), /Usage: todo list --search <text>/);
+  }
+  assert.equal(readFileSync(path, "utf8"), before);
+  const fresh = harness();
+  assert.equal(fresh.exec("list", "--search"), 1);
+  assert.equal(existsSync(fresh.env.TODO_FILE!), false);
+});
+
+test("help documents list --search (#31 AC5)", () => {
+  const h = harness();
+  assert.equal(h.exec("help"), 0);
+  assert.match(h.out.join("\n"), /todo list .*\[--search <text>\]/);
+});
+
+test("list --search treats a following flag as a missing value (#31 AC4 edge)", () => {
+  const h = searchFixture();
+  const path = h.env.TODO_FILE!;
+  const before = readFileSync(path, "utf8");
+  for (const flag of ["--json", "--open", "--done"]) {
+    h.err.length = 0;
+    h.out.length = 0;
+    assert.equal(h.exec("list", "--search", flag), 1, flag);
+    assert.match(h.err.join("\n"), /Usage: todo list --search <text>/);
+    assert.deepEqual(h.out, []);
+  }
+  assert.equal(readFileSync(path, "utf8"), before);
+});
+
+test("list --search matches a multi-word phrase and trims surrounding spaces (#31 AC1 edge)", () => {
+  const h = searchFixture();
+  assert.equal(h.exec("list", "--search", "OAT MILK"), 0);
+  assert.deepEqual(h.out, ["[x]   #5 oat milk [work]"]);
+  h.out.length = 0;
+  assert.equal(h.exec("list", "--search", "  dog  "), 0);
+  assert.deepEqual(h.out, ["[ ]   #3 walk dog"]);
+  h.out.length = 0;
+  assert.equal(h.exec("list", "--search", "milk dog"), 0);
+  assert.deepEqual(h.out, ['No tasks match "milk dog".']);
+});
+
+test("list --search no-match message wins over the --tag message (#31 AC3 edge)", () => {
+  const h = searchFixture();
+  assert.equal(h.exec("list", "--tag", "home", "--search", "oat"), 0);
+  assert.deepEqual(h.out, ['No tasks match "oat".']);
+});
