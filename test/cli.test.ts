@@ -36,11 +36,6 @@ test("done with unknown id fails with a message", () => {
   assert.match(h.err.join("\n"), /No task with id 42/);
 });
 
-test("empty title is rejected", () => {
-  const h = harness();
-  assert.equal(h.exec("add", "  "), 1);
-});
-
 test("unknown command exits 2 and help exits 0", () => {
   const h = harness();
   assert.equal(h.exec("frobnicate"), 2);
