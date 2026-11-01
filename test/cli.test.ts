@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "../src/cli/main.ts";
+import { parseDueDate } from "../src/domain/task.ts";
 
 function harness() {
   const out: string[] = [];
@@ -226,4 +227,36 @@ test("help documents add --due and the accepted date forms", () => {
   h.exec("help");
   assert.match(h.out.join("\n"), /todo add .*\[--due <date>\]/);
   assert.match(h.out.join("\n"), /YYYY-MM-DD, today, or tomorrow/);
+});
+
+// #11 — adversarial edge cases (test-engineer).
+test("parseDueDate: leap days and calendar rollovers (#11 AC1/AC2 edges)", () => {
+  const jan = new Date(2026, 0, 1, 12);
+  assert.equal(parseDueDate("2028-02-29", jan), "2028-02-29");
+  for (const bad of ["2027-02-29", "2026-04-31", "2026-00-10", " 2026-11-15", "2026-11-15T00:00", "Today"]) {
+    assert.throws(() => parseDueDate(bad, jan), /Use YYYY-MM-DD, today, or tomorrow/, bad);
+  }
+  assert.equal(parseDueDate("tomorrow", new Date(2026, 11, 31, 12)), "2027-01-01");
+  assert.equal(parseDueDate("tomorrow", new Date(2028, 1, 28, 12)), "2028-02-29");
+  assert.equal(parseDueDate("today", new Date(2026, 10, 1, 23, 59)), "2026-11-01");
+});
+
+test("invalid due date leaves an existing task file byte-identical (#11 AC2)", () => {
+  const h = dueHarness();
+  h.exec("add", "--due", "2026-12-01", "existing");
+  const before = readFileSync(h.env.TODO_FILE!, "utf8");
+  assert.equal(h.exec("add", "--due", "2026-02-30", "bad"), 1);
+  assert.equal(h.exec("add", "--due", "someday", "bad"), 1);
+  assert.equal(readFileSync(h.env.TODO_FILE!, "utf8"), before);
+});
+
+test("dueDate survives done and is exposed by list --json (#11 AC4 additive)", () => {
+  const h = dueHarness();
+  h.exec("add", "--due", "2026-12-25", "wrap", "gifts");
+  assert.equal(h.exec("done", "1"), 0);
+  h.exec("list", "--json");
+  const [task] = JSON.parse(h.out.at(-1)!);
+  assert.equal(task.dueDate, "2026-12-25");
+  assert.equal(task.status, "done");
+  assert.equal(JSON.parse(readFileSync(h.env.TODO_FILE!, "utf8")).version, 1);
 });
