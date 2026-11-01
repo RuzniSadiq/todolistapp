@@ -21,3 +21,5 @@ One person on their own machine, working in a terminal.
 
 ## Decisions log
 - 2026-11-01 — Goal set: "a todo CLI where I can add, list, complete and prioritise tasks." (from the setup doc)
+- 2026-11-01 — Priority levels are `high / medium / low`; new tasks default to `medium`; `list` orders open tasks by priority then id, done tasks last. (Default proposed by the orchestrator on the owner's "do it quickly" instruction — owner may veto.)
+- 2026-11-01 — Repo is public on GitHub (owner choice).
