@@ -1,0 +1,28 @@
+{
+  "name": "todolistapp",
+  "version": "0.1.0",
+  "description": "A local-first command-line todo list.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "todo": "dist/cli/main.js"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "node --test --test-reporter=tap test/*.test.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "smoke": "node test/smoke.mjs"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^22.20.5",
+    "eslint": "^9.39.5",
+    "typescript": "~5.9",
+    "typescript-eslint": "^8.72.1"
+  }
+}

@@ -1,0 +1,14 @@
+node_modules/
+dist/
+release/
+*.log
+# Gibson runtime state
+gibson/loop-state.md
+gibson/.loop-state.prev
+gibson/journal.md
+gibson/HALT
+gibson/halt-latch
+gibson/second-opinion.md
+gibson/pre-handoff-review.md
+.gibson-baseline.json
+.gibson-receipts/
