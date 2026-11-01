@@ -72,3 +72,11 @@ _Last updated: 2026-11-01_
   - Draft PR bodies keep `claim.sh`'s markers (`- Active-work claim:`, `- Claim scope:`, `- Issue: #N`) so `release-claim.sh` can release the claim.
   - Before removing a loop worktree, back up its git-ignored `gibson/journal.md`, `gibson/loop-state.md`, `.gibson-receipts/`.
 - **Links:** #11, #13
+
+## 2026-11-02 — behind-main-costs-a-rereview
+
+- **What happened:** PR #33 (#31, `list --search`) was preflight READY with a Codex APPROVE, but `main` requires up-to-date branches and a docs-only PR (#32) had merged meanwhile, so the PR was BEHIND. Release synced (`git merge origin/main`, signed, `Agent-Vendor: claude`), which moved the head to `0003fca`; `review-evidence` pins approval to the exact head, so a second Codex review was needed before merge. One extra reviewer + release hat for zero product change.
+- **Root cause:** branch protection "require up-to-date" + exact-head review evidence ⇒ any merge to `main` after review invalidates the approval. Merging a plan/docs PR while a feature PR is in review guarantees this.
+- **Fix / rule:** before dispatching the reviewer, check `gh pr view N --json mergeStateStatus`; if `BEHIND`, sync first (merge, never force-push) so one review covers the final head. Avoid merging docs/plan PRs while a feature PR is between reviewer and release. When syncing, confirm `git diff <old> <new> -- src test` is empty and say so in the re-review request.
+- **Smoke gotcha:** `TODO_FILE=$(mktemp)` gives an empty file → JSON parse error. Point `TODO_FILE` at a nonexistent path inside `mktemp -d` instead.
+- **Links:** #31, #32, #33
