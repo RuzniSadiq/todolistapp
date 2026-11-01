@@ -23,3 +23,4 @@ One person on their own machine, working in a terminal.
 - 2026-11-01 — Goal set: "a todo CLI where I can add, list, complete and prioritise tasks." (from the setup doc)
 - 2026-11-01 — Priority levels are `high / medium / low`; new tasks default to `medium`; `list` orders open tasks by priority then id, done tasks last. (Default proposed by the orchestrator on the owner's "do it quickly" instruction — owner may veto.)
 - 2026-11-01 — Repo is public on GitHub (owner choice).
+- 2026-11-01 — Owner: "let me add due dates to tasks and show overdue ones at the top." Approved defaults: due dates are calendar dates (`YYYY-MM-DD`, `today`, `tomorrow`), set via `add --due` and changed/cleared via `todo due <id> <date|none>`; overdue = open and due before today (local); overdue tasks list first, oldest due date first, then the existing priority order; done tasks never overdue. No times, reminders, recurrence, or `--overdue` filter.
