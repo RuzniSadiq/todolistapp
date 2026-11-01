@@ -69,3 +69,19 @@ Tag grammar: each value is split on commas; each item is trimmed and lowercased 
 
 ## Out of scope
 Renaming tags, listing all tags, multi-tag filters (AND/OR), tag colours.
+
+---
+
+# PLAN — v0.5: search by title
+
+Owner (2026-11-02): "allow users to search tasks by their title."
+
+## 8. Search tasks by title — #31
+- AC8.1 `todo list --search <text>` keeps only tasks whose title contains `<text>`, ignoring case (substring match).
+- AC8.2 Order is unchanged (overdue, then open by priority, then done); combines with `--open`/`--done`/`--tag`/`--json`.
+- AC8.3 No matches prints `No tasks match "<text>".` (exit 0); an empty task file keeps the `No tasks yet…` message.
+- AC8.4 Missing/blank value or a repeated `--search` exits 1 with a usage message; nothing is written.
+- AC8.5 `todo help` documents `list --search`.
+
+## Out of scope
+Storage changes, searching tags or other fields, regex/wildcards, fuzzy matching, multi-term AND/OR, match highlighting.
