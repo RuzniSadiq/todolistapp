@@ -62,10 +62,31 @@ export function setPriority(list: TaskList, id: number, priority: TaskPriority):
   return { task, previous };
 }
 
-/** Open tasks first (high → medium → low, then id), done tasks last (by id). */
-export function sortTasks(tasks: readonly Task[]): Task[] {
-  const rank = (t: Task) => (t.status === "done" ? PRIORITIES.length : PRIORITIES.indexOf(priorityOf(t)));
-  return [...tasks].sort((a, b) => rank(a) - rank(b) || a.id - b.id);
+/** Overdue = open, with a due date strictly before `today` (`YYYY-MM-DD`). Done tasks are never overdue. */
+export function isOverdue(task: Task, today: string): boolean {
+  return task.status === "open" && task.dueDate !== undefined && task.dueDate < today;
+}
+
+/**
+ * Overdue tasks first (oldest due date, then id), then other open tasks
+ * (high → medium → low, then id), done tasks last (by id).
+ * Without `today`, nothing is treated as overdue.
+ */
+export function sortTasks(tasks: readonly Task[], today?: string): Task[] {
+  const overdue = (t: Task) => today !== undefined && isOverdue(t, today);
+  const rank = (t: Task) => (overdue(t) ? -1 : t.status === "done" ? PRIORITIES.length : PRIORITIES.indexOf(priorityOf(t)));
+  const byDue = (a: Task, b: Task) => (overdue(a) && overdue(b) ? a.dueDate!.localeCompare(b.dueDate!) : 0);
+  return [...tasks].sort((a, b) => rank(a) - rank(b) || byDue(a, b) || a.id - b.id);
+}
+
+/** Set (`YYYY-MM-DD`) or clear (`undefined`) a task's due date. */
+export function setDueDate(list: TaskList, id: number, dueDate: string | undefined): { task: Task; previous: string | undefined } {
+  const task = list.tasks.find((t) => t.id === id);
+  if (!task) throw new Error(`No task with id ${id}.`);
+  const previous = task.dueDate;
+  if (dueDate === undefined) delete task.dueDate;
+  else task.dueDate = dueDate;
+  return { task, previous };
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
