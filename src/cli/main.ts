@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-import { addTask, completeTask, parsePriority, priorityOf, setPriority, sortTasks, type Task, type TaskPriority } from "../domain/task.ts";
+import { addTask, completeTask, parseDueDate, parsePriority, priorityOf, setPriority, sortTasks, type Task, type TaskPriority } from "../domain/task.ts";
 import { defaultStorePath, load, save } from "../infrastructure/store.ts";
 
 const HELP = `todo — a local command-line todo list
 
 Usage:
-  todo add [--priority <high|medium|low>] <title...>   Add a task (default: medium)
+  todo add [--priority <high|medium|low>] [--due <date>] <title...>
+                                                       Add a task (default: medium)
+                                                       <date>: YYYY-MM-DD, today, or tomorrow
   todo list [--open | --done] [--json]                 List tasks, most important first
   todo done <id>                                       Mark a task as done
   todo prioritise <id> <high|medium|low>               Change a task's priority
@@ -32,15 +34,20 @@ export function run(argv: string[], io: Io): number {
   try {
     switch (command) {
       case "add": {
-        const priorityIndex = rest.indexOf("--priority");
-        let priority: TaskPriority = "medium";
         const titleParts = [...rest];
-        if (priorityIndex !== -1) {
-          priority = parsePriority(titleParts[priorityIndex + 1]);
-          titleParts.splice(priorityIndex, 2);
-        }
+        const takeOption = (name: string): string | null => {
+          const i = titleParts.indexOf(name);
+          if (i === -1) return null;
+          const [, value] = titleParts.splice(i, 2);
+          return value ?? "";
+        };
+        const priorityArg = takeOption("--priority");
+        const priority: TaskPriority = priorityArg === null ? "medium" : parsePriority(priorityArg);
+        const dueArg = takeOption("--due");
+        const now = io.now();
+        const dueDate = dueArg === null ? undefined : parseDueDate(dueArg, now);
         const list = load(path);
-        const task = addTask(list, titleParts.join(" "), io.now(), priority);
+        const task = addTask(list, titleParts.join(" "), now, priority, dueDate);
         save(path, list);
         io.out(`Added #${task.id}: ${task.title}`);
         return 0;
