@@ -6,7 +6,7 @@ const HELP = `todo — a local command-line todo list
 
 Usage:
   todo add [--priority <high|medium|low>] <title...>   Add a task (default: medium)
-  todo list [--json]                                   List tasks, most important first
+  todo list [--open | --done] [--json]                 List tasks, most important first
   todo done <id>                                       Mark a task as done
   todo prioritise <id> <high|medium|low>               Change a task's priority
   todo help                                            Show this help
@@ -46,12 +46,20 @@ export function run(argv: string[], io: Io): number {
         return 0;
       }
       case "list": {
+        const onlyOpen = rest.includes("--open");
+        const onlyDone = rest.includes("--done");
+        if (onlyOpen && onlyDone) {
+          io.err("Usage: todo list [--open | --done] [--json] (choose one of --open or --done)");
+          return 2;
+        }
         const list = load(path);
-        const tasks = sortTasks(list.tasks);
+        const tasks = sortTasks(list.tasks).filter((t) => (onlyOpen ? t.status === "open" : onlyDone ? t.status === "done" : true));
         if (rest.includes("--json")) {
           io.out(JSON.stringify(tasks.map((t) => ({ ...t, priority: priorityOf(t) }))));
         } else if (list.tasks.length === 0) {
           io.out("No tasks yet. Add one with: todo add <title>");
+        } else if (tasks.length === 0) {
+          io.out(onlyOpen ? "No open tasks." : "No completed tasks.");
         } else {
           for (const t of tasks) io.out(formatTask(t));
         }
