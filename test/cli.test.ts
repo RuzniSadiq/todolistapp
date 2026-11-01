@@ -544,6 +544,8 @@ test("list --tag filters, keeps order, and combines with --open/--done/--json (#
   assert.equal(h.out.at(-1), "No completed tasks tagged home.");
   assert.equal(h.exec("list", "--tag"), 1);
   assert.equal(h.exec("list", "--tag", "a,b"), 1);
+  assert.equal(h.exec("list", "--tag", "work", "--tag", "home"), 1);
+  assert.match(h.err.at(-1)!, /Usage: todo list --tag <tag> \(one tag\)/);
 });
 
 test("help documents --tag, tag, untag, and list --tag (#17 AC6)", () => {

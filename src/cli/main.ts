@@ -78,6 +78,7 @@ export function run(argv: string[], io: Io): number {
           return 2;
         }
         const tagIndex = rest.indexOf("--tag");
+        if (tagIndex !== -1 && rest.indexOf("--tag", tagIndex + 1) !== -1) throw new Error("Usage: todo list --tag <tag> (one tag)");
         const tag = tagIndex === -1 ? undefined : parseSingleTag(rest[tagIndex + 1]);
         const list = load(path);
         const today = localDate(io.now());
