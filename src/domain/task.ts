@@ -1,9 +1,11 @@
 export type TaskStatus = "open" | "done";
+export type TaskPriority = "low" | "medium" | "high";
 
 export interface Task {
   id: number;
   title: string;
   status: TaskStatus;
+  priority?: TaskPriority;
   createdAt: string;
   completedAt?: string;
 }
@@ -18,10 +20,10 @@ export function emptyList(): TaskList {
   return { version: 1, nextId: 1, tasks: [] };
 }
 
-export function addTask(list: TaskList, title: string, now: Date): Task {
+export function addTask(list: TaskList, title: string, now: Date, priority: TaskPriority = "medium"): Task {
   const trimmed = title.trim();
   if (trimmed === "") throw new Error("Task title cannot be empty.");
-  const task: Task = { id: list.nextId, title: trimmed, status: "open", createdAt: now.toISOString() };
+  const task: Task = { id: list.nextId, title: trimmed, status: "open", priority, createdAt: now.toISOString() };
   list.tasks.push(task);
   list.nextId += 1;
   return task;
