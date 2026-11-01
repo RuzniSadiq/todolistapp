@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "../src/cli/main.ts";
-import { isOverdue, parseDueDate, type Task } from "../src/domain/task.ts";
+import { isOverdue, parseDueDate, sortTasks, type Task } from "../src/domain/task.ts";
 
 function harness() {
   const out: string[] = [];
@@ -354,4 +354,64 @@ test("help documents --due and todo due (#12 AC6)", () => {
   assert.match(help, /todo due <id> <date\|none>/);
   assert.match(help, /YYYY-MM-DD, today, or tomorrow/);
   assert.match(help, /OVERDUE/);
+});
+
+// #12 — adversarial edge cases (test-engineer).
+test("due rejects non-positive / non-integer ids and case-variant or relative keywords, file byte-identical (#12 AC2 edges)", () => {
+  const h = dueHarness();
+  h.exec("add", "--due", "2026-12-01", "existing");
+  const before = readFileSync(h.env.TODO_FILE!, "utf8");
+  const cases: string[][] = [["due", "0", "today"], ["due", "-1", "today"], ["due", "1.5", "today"], ["due", "", "today"], ["due", "1", ""], ["due", "1", "None"], ["due", "1", "NONE"], ["due", "1", "yesterday"], ["due", "1", "2026-11-31"]];
+  for (const argv of cases) {
+    assert.equal(h.exec(...argv), 1, JSON.stringify(argv));
+    assert.equal(readFileSync(h.env.TODO_FILE!, "utf8"), before, JSON.stringify(argv));
+  }
+});
+
+test("due none on a task without a due date succeeds and stores no dueDate key (#12 AC1 edge)", () => {
+  const h = dueHarness();
+  h.exec("add", "plain");
+  assert.equal(h.exec("due", "1", "none"), 0);
+  assert.equal(h.out.at(-1), "Due #1: none → none (plain)");
+  assert.equal("dueDate" in JSON.parse(readFileSync(h.env.TODO_FILE!, "utf8")).tasks[0], false);
+});
+
+test("due on a done task with a past date never makes it overdue or moves it up (#12 AC3/AC4 edge)", () => {
+  const h = dueHarness();
+  h.exec("add", "open");
+  h.exec("add", "finished");
+  h.exec("done", "2");
+  assert.equal(h.exec("due", "2", "2020-01-01"), 0);
+  assert.deepEqual(listJson(h).map((t) => [t.id, t.overdue]), [[1, false], [2, false]]);
+  h.exec("list");
+  assert.equal(h.out.at(-1), "[x]   #2 finished (due 2020-01-01)");
+});
+
+test("overdue uses the local calendar date: just after local midnight yesterday's task is overdue (#12 AC3 edge)", () => {
+  const h = dueHarness();
+  h.exec("add", "--due", "2026-11-30", "due yesterday");
+  const exec = (...argv: string[]) => run(argv, { out: (l) => h.out.push(l), err: (l) => h.err.push(l), env: h.env, now: () => new Date(2026, 11, 1, 0, 1) });
+  exec("list", "--json");
+  assert.equal(JSON.parse(h.out.at(-1)!)[0].overdue, true);
+  const lateNight = (...argv: string[]) => run(argv, { out: (l) => h.out.push(l), err: (l) => h.err.push(l), env: h.env, now: () => new Date(2026, 10, 30, 23, 59) });
+  lateNight("list", "--json");
+  assert.equal(JSON.parse(h.out.at(-1)!)[0].overdue, false);
+});
+
+test("sortTasks without today treats nothing as overdue and does not mutate its input (#12 AC4 edge)", () => {
+  const t = (id: number, extra: Partial<Task> = {}): Task => ({ id, title: `t${id}`, status: "open", createdAt: "", ...extra });
+  const input = [t(1, { priority: "low", dueDate: "2000-01-01" }), t(2, { priority: "high" }), t(3, { status: "done" })];
+  const snapshot = JSON.stringify(input);
+  assert.deepEqual(sortTasks(input).map((x) => x.id), [2, 1, 3]);
+  assert.deepEqual(sortTasks(input, "2026-11-30").map((x) => x.id), [1, 2, 3]);
+  assert.equal(JSON.stringify(input), snapshot);
+});
+
+test("list --done --json reports overdue false even for past-due completed tasks (#12 AC5 edge)", () => {
+  const h = dueHarness();
+  h.exec("add", "--due", "2026-01-01", "old");
+  h.exec("add", "--due", "2026-01-01", "late open");
+  h.exec("done", "1");
+  h.exec("list", "--done", "--json");
+  assert.deepEqual(JSON.parse(h.out.at(-1)!).map((x: Task & { overdue: boolean }) => [x.id, x.dueDate, x.overdue]), [[1, "2026-01-01", false]]);
 });
