@@ -54,7 +54,7 @@ test("legacy v0.1 task file without priority loads, lists as medium, and is not 
   const legacy = { version: 1, nextId: 2, tasks: [{ id: 1, title: "legacy", status: "open", createdAt: "2026-01-01T00:00:00.000Z" }] };
   writeFileSync(path, JSON.stringify(legacy));
   assert.equal(h.exec("list", "--json"), 0);
-  assert.deepEqual(JSON.parse(h.out.at(-1)!), legacy.tasks.map((t) => ({ ...t, priority: "medium", overdue: false })));
+  assert.deepEqual(JSON.parse(h.out.at(-1)!), legacy.tasks.map((t) => ({ ...t, priority: "medium", tags: [], overdue: false })));
   h.exec("list");
   assert.equal(h.out.at(-1), "[ ]   #1 legacy");
   assert.deepEqual(JSON.parse(readFileSync(path, "utf8")), legacy);
@@ -206,7 +206,7 @@ test("v0.2 task file without dueDate loads, lists unchanged, and is not rewritte
   };
   writeFileSync(path, JSON.stringify(v02));
   assert.equal(h.exec("list", "--json"), 0);
-  assert.deepEqual(JSON.parse(h.out.at(-1)!), v02.tasks.map((t) => ({ ...t, overdue: false })));
+  assert.deepEqual(JSON.parse(h.out.at(-1)!), v02.tasks.map((t) => ({ ...t, tags: [], overdue: false })));
   h.exec("list");
   assert.deepEqual(h.out.slice(-2), ["[ ] ! #1 old high", "[x] ↓ #2 old done"]);
   assert.deepEqual(JSON.parse(readFileSync(path, "utf8")), v02);
@@ -455,7 +455,7 @@ test("without --tag no tags field is written; a v0.3 file loads, lists unchanged
   const g = harness();
   writeFileSync(g.env.TODO_FILE!, JSON.stringify(v03));
   assert.equal(g.exec("list", "--json"), 0);
-  assert.deepEqual(JSON.parse(g.out.at(-1)!), v03.tasks.map((t) => ({ ...t, overdue: false })));
+  assert.deepEqual(JSON.parse(g.out.at(-1)!), v03.tasks.map((t) => ({ ...t, tags: [], overdue: false })));
   g.exec("list");
   assert.equal(g.out.at(-1), "[ ] ! #1 old (due 2026-02-01)");
   assert.deepEqual(JSON.parse(readFileSync(g.env.TODO_FILE!, "utf8")), v03);
@@ -475,4 +475,85 @@ test("help documents add --tag", () => {
   const h = harness();
   h.exec("help");
   assert.match(h.out.join("\n"), /todo add .*\[--tag <tag>\]/);
+});
+
+// #17 — tag/untag, tags in list, list --tag.
+test("tag adds tags idempotently and prints the result (#17 AC1)", () => {
+  const h = harness();
+  h.exec("add", "paint", "fence");
+  assert.equal(h.exec("tag", "1", "Work", "home"), 0);
+  assert.equal(h.out.at(-1), "Tags #1: home, work (paint fence)");
+  assert.equal(h.exec("tag", "1", "work,diy"), 0);
+  assert.equal(h.out.at(-1), "Tags #1: diy, home, work (paint fence)");
+  assert.deepEqual(storedTasks(h)[0]!.tags, ["diy", "home", "work"]);
+});
+
+test("untag removes tags; last removal drops the field; absent tag is a no-op (#17 AC2)", () => {
+  const h = harness();
+  h.exec("add", "--tag", "work,home", "task");
+  assert.equal(h.exec("untag", "1", "garden"), 0);
+  assert.deepEqual(storedTasks(h)[0]!.tags, ["home", "work"]);
+  assert.equal(h.exec("untag", "1", "work"), 0);
+  assert.equal(h.out.at(-1), "Tags #1: home (task)");
+  assert.equal(h.exec("untag", "1", "HOME"), 0);
+  assert.equal(h.out.at(-1), "Tags #1: none (task)");
+  assert.equal("tags" in storedTasks(h)[0]!, false);
+});
+
+test("tag/untag with unknown id, missing or invalid tag exit 1 and leave the file unchanged (#17 AC3)", () => {
+  const h = harness();
+  h.exec("add", "--tag", "work", "task");
+  const before = readFileSync(h.env.TODO_FILE!, "utf8");
+  for (const cmd of ["tag", "untag"]) {
+    assert.equal(h.exec(cmd, "9", "work"), 1);
+    assert.match(h.err.at(-1)!, /No task with id 9/);
+    assert.equal(h.exec(cmd, "1"), 1);
+    assert.match(h.err.at(-1)!, new RegExp(`Usage: todo ${cmd} <id> <tag\\.\\.\\.>`));
+    assert.equal(h.exec(cmd, "1", "bad tag"), 1);
+    assert.equal(h.exec(cmd, "x", "work"), 1);
+  }
+  assert.equal(readFileSync(h.env.TODO_FILE!, "utf8"), before);
+});
+
+test("list shows tags after the title; --json always includes tags (#17 AC4)", () => {
+  const h = harness();
+  h.exec("add", "--tag", "work,home", "--due", "2026-02-01", "tagged");
+  h.exec("add", "plain");
+  h.exec("list");
+  assert.deepEqual(h.out.slice(-2), ["[ ]   #1 tagged [home, work] (due 2026-02-01)", "[ ]   #2 plain"]);
+  h.exec("list", "--json");
+  assert.deepEqual(JSON.parse(h.out.at(-1)!).map((t: Task) => t.tags), [["home", "work"], []]);
+});
+
+test("list --tag filters, keeps order, and combines with --open/--done/--json (#17 AC5)", () => {
+  const h = harness();
+  h.exec("add", "--tag", "work", "low", "--priority", "low");
+  h.exec("add", "--tag", "home", "chores");
+  h.exec("add", "--tag", "work,home", "--priority", "high", "urgent");
+  h.exec("add", "--tag", "work", "finished");
+  h.exec("done", "4");
+  h.exec("list", "--tag", "WORK", "--json");
+  assert.deepEqual(JSON.parse(h.out.at(-1)!).map((t: Task) => t.id), [3, 1, 4]);
+  h.exec("list", "--open", "--tag", "work", "--json");
+  assert.deepEqual(JSON.parse(h.out.at(-1)!).map((t: Task) => t.id), [3, 1]);
+  h.exec("list", "--done", "--tag", "work");
+  assert.deepEqual(h.out.slice(-1), ["[x]   #4 finished [work]"]);
+  assert.equal(h.exec("list", "--tag", "garden"), 0);
+  assert.equal(h.out.at(-1), "No tasks tagged garden.");
+  assert.equal(h.exec("list", "--done", "--tag", "home"), 0);
+  assert.equal(h.out.at(-1), "No completed tasks tagged home.");
+  assert.equal(h.exec("list", "--tag"), 1);
+  assert.equal(h.exec("list", "--tag", "a,b"), 1);
+  assert.equal(h.exec("list", "--tag", "work", "--tag", "home"), 1);
+  assert.match(h.err.at(-1)!, /Usage: todo list --tag <tag> \(one tag\)/);
+});
+
+test("help documents --tag, tag, untag, and list --tag (#17 AC6)", () => {
+  const h = harness();
+  h.exec("help");
+  const help = h.out.join("\n");
+  assert.match(help, /todo add .*\[--tag <tag>\]/);
+  assert.match(help, /todo tag <id> <tag\.\.\.>/);
+  assert.match(help, /todo untag <id> <tag\.\.\.>/);
+  assert.match(help, /todo list .*\[--tag <tag>\]/);
 });

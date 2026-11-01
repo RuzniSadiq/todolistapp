@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { addTask, completeTask, isOverdue, localDate, parseDueDate, parsePriority, parseTags, priorityOf, setDueDate, setPriority, sortTasks, type Task, type TaskPriority } from "../domain/task.ts";
+import { addTask, changeTags, completeTask, isOverdue, localDate, parseDueDate, parsePriority, parseTags, priorityOf, setDueDate, setPriority, sortTasks, type Task, type TaskPriority } from "../domain/task.ts";
 import { defaultStorePath, load, save } from "../infrastructure/store.ts";
 
 const HELP = `todo — a local command-line todo list
@@ -7,10 +7,12 @@ const HELP = `todo — a local command-line todo list
 Usage:
   todo add [--priority <high|medium|low>] [--due <date>] [--tag <tag>]... <title...>
                                                        Add a task (default: medium)
-  todo list [--open | --done] [--json]                 List tasks, most important first
+  todo list [--open | --done] [--tag <tag>] [--json]   List tasks, most important first
   todo done <id>                                       Mark a task as done
   todo prioritise <id> <high|medium|low>               Change a task's priority
   todo due <id> <date|none>                            Set or clear a task's due date
+  todo tag <id> <tag...>                               Add tags to a task
+  todo untag <id> <tag...>                             Remove tags from a task
   todo help                                            Show this help
 
 <tag> is a word of letters, digits and hyphens (e.g. work); repeat --tag or
@@ -30,8 +32,15 @@ export interface Io {
 const MARKER: Record<TaskPriority, string> = { high: "!", medium: " ", low: "↓" };
 
 function formatTask(t: Task, today: string): string {
+  const tags = t.tags?.length ? ` [${t.tags.join(", ")}]` : "";
   const due = t.dueDate === undefined ? "" : ` (due ${t.dueDate}${isOverdue(t, today) ? ", OVERDUE" : ""})`;
-  return `${t.status === "done" ? "[x]" : "[ ]"} ${MARKER[priorityOf(t)]} #${t.id} ${t.title}${due}`;
+  return `${t.status === "done" ? "[x]" : "[ ]"} ${MARKER[priorityOf(t)]} #${t.id} ${t.title}${tags}${due}`;
+}
+
+function parseSingleTag(value: string | undefined): string {
+  const tags = parseTags([value ?? ""]);
+  if (tags.length !== 1) throw new Error("Usage: todo list --tag <tag> (one tag)");
+  return tags[0]!;
 }
 
 export function run(argv: string[], io: Io): number {
@@ -68,13 +77,20 @@ export function run(argv: string[], io: Io): number {
           io.err("Usage: todo list [--open | --done] [--json] (choose one of --open or --done)");
           return 2;
         }
+        const tagIndex = rest.indexOf("--tag");
+        if (tagIndex !== -1 && rest.indexOf("--tag", tagIndex + 1) !== -1) throw new Error("Usage: todo list --tag <tag> (one tag)");
+        const tag = tagIndex === -1 ? undefined : parseSingleTag(rest[tagIndex + 1]);
         const list = load(path);
         const today = localDate(io.now());
-        const tasks = sortTasks(list.tasks, today).filter((t) => (onlyOpen ? t.status === "open" : onlyDone ? t.status === "done" : true));
+        const tasks = sortTasks(list.tasks, today)
+          .filter((t) => (onlyOpen ? t.status === "open" : onlyDone ? t.status === "done" : true))
+          .filter((t) => tag === undefined || (t.tags ?? []).includes(tag));
         if (rest.includes("--json")) {
-          io.out(JSON.stringify(tasks.map((t) => ({ ...t, priority: priorityOf(t), overdue: isOverdue(t, today) }))));
+          io.out(JSON.stringify(tasks.map((t) => ({ ...t, priority: priorityOf(t), tags: t.tags ?? [], overdue: isOverdue(t, today) }))));
         } else if (list.tasks.length === 0) {
           io.out("No tasks yet. Add one with: todo add <title>");
+        } else if (tasks.length === 0 && tag !== undefined) {
+          io.out(`No ${onlyOpen ? "open " : onlyDone ? "completed " : ""}tasks tagged ${tag}.`);
         } else if (tasks.length === 0) {
           io.out(onlyOpen ? "No open tasks." : "No completed tasks.");
         } else {
@@ -109,6 +125,18 @@ export function run(argv: string[], io: Io): number {
         const { task, previous } = setDueDate(list, id, dueDate);
         save(path, list);
         io.out(`Due #${task.id}: ${previous ?? "none"} → ${dueDate ?? "none"} (${task.title})`);
+        return 0;
+      }
+      case "tag":
+      case "untag": {
+        const usage = `Usage: todo ${command} <id> <tag...>`;
+        const id = Number(rest[0]);
+        if (!Number.isInteger(id) || id < 1 || rest.length < 2) throw new Error(usage);
+        const tags = parseTags(rest.slice(1));
+        const list = load(path);
+        const task = changeTags(list, id, tags, command === "untag");
+        save(path, list);
+        io.out(`Tags #${task.id}: ${task.tags?.join(", ") ?? "none"} (${task.title})`);
         return 0;
       }
       case undefined:
