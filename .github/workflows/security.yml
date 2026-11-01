@@ -13,6 +13,9 @@
 # todolistapp calibration (issue #26): jobs for layers 4 (authz-matrix), 5 (zap-baseline,
 # zap-full-staging) and 8 (posture) are not installed — entry condition does not apply
 # (local CLI: no routes, no preview, no deployment). docs/02 recorded skip.
+# trivy-fs (layer 3) is deferred: the template's pinned trivy-action 0.28.0 depends on
+# aquasecurity/setup-trivy@v0.2.1, which no longer resolves (upstream Gibson template bug).
+# Layer 3 here = npm audit --audit-level=high in gibson-gate.yml security-fast.
 
 name: gibson-security
 on:
@@ -83,27 +86,3 @@ jobs:
               ;;
           esac
           echo "- ${msg}" >> "$GITHUB_STEP_SUMMARY"
-
-  # Layer 3 (partial) — Trivy filesystem / supply-chain complementary scan.
-  trivy-fs:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          fetch-depth: 1
-      - name: Announce Trivy report-only (L-056)
-        run: |
-          msg="Trivy filesystem scan is report-only (exit-code 0); findings do not fail the gate until promoted to hard-fail"
-          echo "::warning::${msg}"
-          echo "- ${msg}" >> "$GITHUB_STEP_SUMMARY"
-      - name: Trivy filesystem scan (report)
-        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # 0.28.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          format: table
-          severity: CRITICAL,HIGH
-          exit-code: "0"
