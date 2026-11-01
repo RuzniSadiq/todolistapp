@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { addTask, completeTask, parseDueDate, parsePriority, priorityOf, setPriority, sortTasks, type Task, type TaskPriority } from "../domain/task.ts";
+import { addTask, completeTask, isOverdue, localDate, parseDueDate, parsePriority, priorityOf, setDueDate, setPriority, sortTasks, type Task, type TaskPriority } from "../domain/task.ts";
 import { defaultStorePath, load, save } from "../infrastructure/store.ts";
 
 const HELP = `todo — a local command-line todo list
@@ -7,11 +7,14 @@ const HELP = `todo — a local command-line todo list
 Usage:
   todo add [--priority <high|medium|low>] [--due <date>] <title...>
                                                        Add a task (default: medium)
-                                                       <date>: YYYY-MM-DD, today, or tomorrow
   todo list [--open | --done] [--json]                 List tasks, most important first
   todo done <id>                                       Mark a task as done
   todo prioritise <id> <high|medium|low>               Change a task's priority
+  todo due <id> <date|none>                            Set or clear a task's due date
   todo help                                            Show this help
+
+<date> is YYYY-MM-DD, today, or tomorrow. Open tasks due before today are
+OVERDUE and listed first.
 
 Tasks are stored in $TODO_FILE (default ~/.todolistapp/tasks.json).`;
 
@@ -24,8 +27,9 @@ export interface Io {
 
 const MARKER: Record<TaskPriority, string> = { high: "!", medium: " ", low: "↓" };
 
-function formatTask(t: Task): string {
-  return `${t.status === "done" ? "[x]" : "[ ]"} ${MARKER[priorityOf(t)]} #${t.id} ${t.title}`;
+function formatTask(t: Task, today: string): string {
+  const due = t.dueDate === undefined ? "" : ` (due ${t.dueDate}${isOverdue(t, today) ? ", OVERDUE" : ""})`;
+  return `${t.status === "done" ? "[x]" : "[ ]"} ${MARKER[priorityOf(t)]} #${t.id} ${t.title}${due}`;
 }
 
 export function run(argv: string[], io: Io): number {
@@ -60,15 +64,16 @@ export function run(argv: string[], io: Io): number {
           return 2;
         }
         const list = load(path);
-        const tasks = sortTasks(list.tasks).filter((t) => (onlyOpen ? t.status === "open" : onlyDone ? t.status === "done" : true));
+        const today = localDate(io.now());
+        const tasks = sortTasks(list.tasks, today).filter((t) => (onlyOpen ? t.status === "open" : onlyDone ? t.status === "done" : true));
         if (rest.includes("--json")) {
-          io.out(JSON.stringify(tasks.map((t) => ({ ...t, priority: priorityOf(t) }))));
+          io.out(JSON.stringify(tasks.map((t) => ({ ...t, priority: priorityOf(t), overdue: isOverdue(t, today) }))));
         } else if (list.tasks.length === 0) {
           io.out("No tasks yet. Add one with: todo add <title>");
         } else if (tasks.length === 0) {
           io.out(onlyOpen ? "No open tasks." : "No completed tasks.");
         } else {
-          for (const t of tasks) io.out(formatTask(t));
+          for (const t of tasks) io.out(formatTask(t, today));
         }
         return 0;
       }
@@ -89,6 +94,16 @@ export function run(argv: string[], io: Io): number {
         const { task, previous } = setPriority(list, id, priority);
         save(path, list);
         io.out(`Prioritised #${task.id}: ${previous} → ${priority} (${task.title})`);
+        return 0;
+      }
+      case "due": {
+        const id = Number(rest[0]);
+        if (!Number.isInteger(id) || id < 1) throw new Error("Usage: todo due <id> <YYYY-MM-DD|today|tomorrow|none>");
+        const dueDate = rest[1] === "none" ? undefined : parseDueDate(rest[1], io.now());
+        const list = load(path);
+        const { task, previous } = setDueDate(list, id, dueDate);
+        save(path, list);
+        io.out(`Due #${task.id}: ${previous ?? "none"} → ${dueDate ?? "none"} (${task.title})`);
         return 0;
       }
       case undefined:
