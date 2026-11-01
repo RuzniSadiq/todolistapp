@@ -1,14 +1,15 @@
 #!/usr/bin/env node
-import { addTask, completeTask, type TaskPriority } from "../domain/task.ts";
+import { addTask, completeTask, parsePriority, priorityOf, setPriority, sortTasks, type Task, type TaskPriority } from "../domain/task.ts";
 import { defaultStorePath, load, save } from "../infrastructure/store.ts";
 
 const HELP = `todo — a local command-line todo list
 
 Usage:
-  todo add [--priority <low|medium|high>] <title...>    Add a task
-  todo list [--json]     List tasks
-  todo done <id>         Mark a task as done
-  todo help              Show this help
+  todo add [--priority <high|medium|low>] <title...>   Add a task (default: medium)
+  todo list [--json]                                   List tasks, most important first
+  todo done <id>                                       Mark a task as done
+  todo prioritise <id> <high|medium|low>               Change a task's priority
+  todo help                                            Show this help
 
 Tasks are stored in $TODO_FILE (default ~/.todolistapp/tasks.json).`;
 
@@ -17,6 +18,12 @@ export interface Io {
   err: (line: string) => void;
   env: NodeJS.ProcessEnv;
   now: () => Date;
+}
+
+const MARKER: Record<TaskPriority, string> = { high: "!", medium: " ", low: "↓" };
+
+function formatTask(t: Task): string {
+  return `${t.status === "done" ? "[x]" : "[ ]"} ${MARKER[priorityOf(t)]} #${t.id} ${t.title}`;
 }
 
 export function run(argv: string[], io: Io): number {
@@ -29,11 +36,7 @@ export function run(argv: string[], io: Io): number {
         let priority: TaskPriority = "medium";
         const titleParts = [...rest];
         if (priorityIndex !== -1) {
-          const value = titleParts[priorityIndex + 1];
-          if (value !== "low" && value !== "medium" && value !== "high") {
-            throw new Error("Invalid priority. Valid levels: low, medium, high.");
-          }
-          priority = value;
+          priority = parsePriority(titleParts[priorityIndex + 1]);
           titleParts.splice(priorityIndex, 2);
         }
         const list = load(path);
@@ -44,12 +47,13 @@ export function run(argv: string[], io: Io): number {
       }
       case "list": {
         const list = load(path);
+        const tasks = sortTasks(list.tasks);
         if (rest.includes("--json")) {
-          io.out(JSON.stringify(list.tasks));
+          io.out(JSON.stringify(tasks));
         } else if (list.tasks.length === 0) {
           io.out("No tasks yet. Add one with: todo add <title>");
         } else {
-          for (const t of list.tasks) io.out(`${t.status === "done" ? "[x]" : "[ ]"} #${t.id} ${t.title}`);
+          for (const t of tasks) io.out(formatTask(t));
         }
         return 0;
       }
@@ -60,6 +64,16 @@ export function run(argv: string[], io: Io): number {
         const task = completeTask(list, id, io.now());
         save(path, list);
         io.out(`Completed #${task.id}: ${task.title}`);
+        return 0;
+      }
+      case "prioritise": {
+        const id = Number(rest[0]);
+        if (!Number.isInteger(id) || id < 1) throw new Error("Usage: todo prioritise <id> <high|medium|low>");
+        const priority = parsePriority(rest[1]);
+        const list = load(path);
+        const { task, previous } = setPriority(list, id, priority);
+        save(path, list);
+        io.out(`Prioritised #${task.id}: ${previous} → ${priority} (${task.title})`);
         return 0;
       }
       case undefined:
