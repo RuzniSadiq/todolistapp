@@ -80,7 +80,7 @@ Owner (2026-11-02): "allow users to search tasks by their title."
 - AC8.1 `todo list --search <text>` keeps only tasks whose title contains `<text>`, ignoring case (substring match).
 - AC8.2 Order is unchanged (overdue, then open by priority, then done); combines with `--open`/`--done`/`--tag`/`--json`.
 - AC8.3 No matches prints `No tasks match "<text>".` (exit 0); an empty task file keeps the `No tasks yet…` message.
-- AC8.4 Missing/blank value or a repeated `--search` exits 1 with a usage message; nothing is written.
+- AC8.4 Missing/blank value or a repeated `--search` exits 1 with `Usage: todo list --search <text>`; nothing is written.
 - AC8.5 `todo help` documents `list --search`.
 
 ## Out of scope
