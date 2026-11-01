@@ -415,3 +415,64 @@ test("list --done --json reports overdue false even for past-due completed tasks
   h.exec("list", "--done", "--json");
   assert.deepEqual(JSON.parse(h.out.at(-1)!).map((x: Task & { overdue: boolean }) => [x.id, x.dueDate, x.overdue]), [[1, "2026-01-01", false]]);
 });
+
+// #16 — tags (storage) and add --tag.
+const storedTasks = (h: ReturnType<typeof harness>) => JSON.parse(readFileSync(h.env.TODO_FILE!, "utf8")).tasks as Task[];
+
+test("add --tag (repeated or comma-separated) stores lowercase, sorted, de-duplicated tags (#16 AC1)", () => {
+  const h = harness();
+  assert.equal(h.exec("add", "--tag", "work", "--tag", "home", "paint", "fence"), 0);
+  assert.equal(h.exec("add", "--tag", "work,home", "buy", "paint"), 0);
+  assert.equal(h.exec("add", "--tag", "Work,HOME", "--tag", "work", "--priority", "high", "mixed"), 0);
+  assert.deepEqual(storedTasks(h).map((t) => [t.title, t.tags]), [
+    ["paint fence", ["home", "work"]],
+    ["buy paint", ["home", "work"]],
+    ["mixed", ["home", "work"]],
+  ]);
+  assert.equal(storedTasks(h)[2]!.priority, "high");
+});
+
+test("invalid or missing tag exits 1, shows the allowed form, and writes nothing (#16 AC2)", () => {
+  const h = harness();
+  h.exec("add", "existing");
+  const before = readFileSync(h.env.TODO_FILE!, "utf8");
+  for (const bad of ["two words", "", "foo!", "-lead", "work,"]) {
+    assert.equal(h.exec("add", "--tag", bad, "task"), 1, JSON.stringify(bad));
+    assert.match(h.err.at(-1)!, /letters, digits and hyphens/);
+  }
+  assert.equal(h.exec("add", "task", "--tag"), 1);
+  assert.equal(readFileSync(h.env.TODO_FILE!, "utf8"), before);
+  const fresh = harness();
+  assert.equal(fresh.exec("add", "--tag", "foo!", "task"), 1);
+  assert.equal(existsSync(fresh.env.TODO_FILE!), false);
+});
+
+test("without --tag no tags field is written; a v0.3 file loads, lists unchanged, and is not rewritten (#16 AC3)", () => {
+  const h = harness();
+  h.exec("add", "plain");
+  assert.equal("tags" in storedTasks(h)[0]!, false);
+  const v03 = { version: 1, nextId: 2, tasks: [{ id: 1, title: "old", status: "open", priority: "high", dueDate: "2026-02-01", createdAt: "2026-01-01T00:00:00.000Z" }] };
+  const g = harness();
+  writeFileSync(g.env.TODO_FILE!, JSON.stringify(v03));
+  assert.equal(g.exec("list", "--json"), 0);
+  assert.deepEqual(JSON.parse(g.out.at(-1)!), v03.tasks.map((t) => ({ ...t, overdue: false })));
+  g.exec("list");
+  assert.equal(g.out.at(-1), "[ ] ! #1 old (due 2026-02-01)");
+  assert.deepEqual(JSON.parse(readFileSync(g.env.TODO_FILE!, "utf8")), v03);
+});
+
+test("tags keep TaskList.version at 1 and only add the tags field (#16 AC4)", () => {
+  const h = harness();
+  h.exec("add", "plain");
+  h.exec("add", "--tag", "work", "tagged");
+  const file = JSON.parse(readFileSync(h.env.TODO_FILE!, "utf8"));
+  assert.equal(file.version, 1);
+  const [plain, tagged] = file.tasks;
+  assert.deepEqual(Object.keys(tagged).sort(), [...Object.keys(plain), "tags"].sort());
+});
+
+test("help documents add --tag", () => {
+  const h = harness();
+  h.exec("help");
+  assert.match(h.out.join("\n"), /todo add .*\[--tag <tag>\]/);
+});
