@@ -130,3 +130,14 @@ export function parseTags(values: readonly string[]): string[] {
 export function normaliseTags(tags: readonly string[]): string[] {
   return [...new Set(tags)].sort();
 }
+
+/** Add (`remove = false`) or remove tags on a task. Removing the last tag drops the field. */
+export function changeTags(list: TaskList, id: number, tags: readonly string[], remove = false): Task {
+  const task = list.tasks.find((t) => t.id === id);
+  if (!task) throw new Error(`No task with id ${id}.`);
+  const current = task.tags ?? [];
+  const next = remove ? current.filter((t) => !tags.includes(t)) : normaliseTags([...current, ...tags]);
+  if (next.length === 0) delete task.tags;
+  else task.tags = next;
+  return task;
+}
