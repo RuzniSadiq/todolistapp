@@ -114,7 +114,7 @@ jobs:
       - name: SAST (semgrep)
         run: pipx run semgrep ci --config p/owasp-top-ten --config p/secrets
       - name: Supply chain
-        run: npm audit --audit-level=critical
+        run: npm audit --audit-level=high
 
   # ===========================================================================
   # Protected test-integrity — resolve (job 1 of 4)
