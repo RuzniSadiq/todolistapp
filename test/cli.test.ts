@@ -47,13 +47,15 @@ test("unknown command exits 2 and help exits 0", () => {
   assert.match(h.out.join("\n"), /Usage:/);
 });
 
-test("legacy v0.1 task file without priority loads and lists unchanged", () => {
+test("legacy v0.1 task file without priority loads, lists as medium, and is not rewritten", () => {
   const h = harness();
   const path = h.env.TODO_FILE!;
   const legacy = { version: 1, nextId: 2, tasks: [{ id: 1, title: "legacy", status: "open", createdAt: "2026-01-01T00:00:00.000Z" }] };
   writeFileSync(path, JSON.stringify(legacy));
   assert.equal(h.exec("list", "--json"), 0);
-  assert.deepEqual(JSON.parse(h.out.at(-1)!), legacy.tasks);
+  assert.deepEqual(JSON.parse(h.out.at(-1)!), legacy.tasks.map((t) => ({ ...t, priority: "medium" })));
+  h.exec("list");
+  assert.equal(h.out.at(-1), "[ ]   #1 legacy");
   assert.deepEqual(JSON.parse(readFileSync(path, "utf8")), legacy);
 });
 

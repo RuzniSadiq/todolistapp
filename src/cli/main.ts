@@ -49,7 +49,7 @@ export function run(argv: string[], io: Io): number {
         const list = load(path);
         const tasks = sortTasks(list.tasks);
         if (rest.includes("--json")) {
-          io.out(JSON.stringify(tasks));
+          io.out(JSON.stringify(tasks.map((t) => ({ ...t, priority: priorityOf(t) }))));
         } else if (list.tasks.length === 0) {
           io.out("No tasks yet. Add one with: todo add <title>");
         } else {
