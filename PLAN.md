@@ -46,3 +46,25 @@ Tasks carry an optional `dueDate` (`YYYY-MM-DD`, a calendar date, no time). v0.2
 
 ## Out of scope
 Times of day, reminders/notifications, recurring tasks, a `--overdue` filter.
+
+---
+
+# PLAN — v0.4: tags
+
+Owner (2026-11-01): "Let me tag tasks with one or more labels like work or home when I add them or later."
+
+## 6. Tags (storage) — #16
+Tasks carry an optional `tags` list of lowercase words (letters, digits, hyphens), stored sorted and de-duplicated. v0.3 files still load.
+- AC6.1 `todo add --tag work --tag home <title>` (or `--tag work,home`) stores `tags: ["home", "work"]`.
+- AC6.2 An invalid tag exits 1 with a message showing the allowed form; nothing is written.
+- AC6.3 Without `--tag` no `tags` field is written; v0.3 files load unchanged; `TaskList.version` stays 1.
+
+## 7. Tag/untag, show tags, filter by tag — #17
+- AC7.1 `todo tag <id> <tag...>` adds tags; `todo untag <id> <tag...>` removes them; both are idempotent.
+- AC7.2 Unknown id or invalid/missing tag exits 1; the file is unchanged.
+- AC7.3 Human list shows `[home, work]` after the title; `--json` always includes `tags`.
+- AC7.4 `todo list --tag work` filters to that tag, keeps the existing order, and combines with `--open`/`--done`/`--json`.
+- AC7.5 `todo help` documents `--tag`, `todo tag`, `todo untag` and `list --tag`.
+
+## Out of scope
+Renaming tags, listing all tags, multi-tag filters (AND/OR), tag colours.
