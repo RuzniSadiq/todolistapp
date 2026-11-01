@@ -121,3 +121,38 @@ test("help documents prioritise", () => {
   h.exec("help");
   assert.match(h.out.join("\n"), /todo prioritise <id> <high\|medium\|low>/);
 });
+
+test("list --open shows only open tasks and --done only completed ones", () => {
+  const h = harness();
+  h.exec("add", "a");
+  h.exec("add", "b");
+  h.exec("done", "1");
+  h.exec("list", "--open");
+  assert.deepEqual(h.out.slice(-1), ["[ ]   #2 b"]);
+  h.exec("list", "--done");
+  assert.deepEqual(h.out.slice(-1), ["[x]   #1 a"]);
+});
+
+test("list filters combine with --json", () => {
+  const h = harness();
+  h.exec("add", "a");
+  h.exec("add", "b");
+  h.exec("done", "2");
+  h.exec("list", "--open", "--json");
+  assert.deepEqual(JSON.parse(h.out.at(-1)!).map((t: { id: number }) => t.id), [1]);
+  h.exec("list", "--json", "--done");
+  assert.deepEqual(JSON.parse(h.out.at(-1)!).map((t: { id: number }) => t.id), [2]);
+});
+
+test("list --open --done together exits 2 with a usage message", () => {
+  const h = harness();
+  assert.equal(h.exec("list", "--open", "--done"), 2);
+  assert.match(h.err.at(-1)!, /Usage: todo list \[--open \| --done\]/);
+});
+
+test("filtered list with no matches says so", () => {
+  const h = harness();
+  h.exec("add", "a");
+  h.exec("list", "--done");
+  assert.equal(h.out.at(-1), "No completed tasks.");
+});
