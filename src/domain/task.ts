@@ -8,6 +8,8 @@ export interface Task {
   priority?: TaskPriority;
   /** Calendar date `YYYY-MM-DD` (local). Absent when the task has no due date. */
   dueDate?: string;
+  /** Lowercase tags, sorted and de-duplicated. Absent when the task has no tags. */
+  tags?: string[];
   createdAt: string;
   completedAt?: string;
 }
@@ -22,11 +24,12 @@ export function emptyList(): TaskList {
   return { version: 1, nextId: 1, tasks: [] };
 }
 
-export function addTask(list: TaskList, title: string, now: Date, priority: TaskPriority = "medium", dueDate?: string): Task {
+export function addTask(list: TaskList, title: string, now: Date, priority: TaskPriority = "medium", dueDate?: string, tags: readonly string[] = []): Task {
   const trimmed = title.trim();
   if (trimmed === "") throw new Error("Task title cannot be empty.");
   const task: Task = { id: list.nextId, title: trimmed, status: "open", priority, createdAt: now.toISOString() };
   if (dueDate !== undefined) task.dueDate = dueDate;
+  if (tags.length > 0) task.tags = normaliseTags(tags);
   list.tasks.push(task);
   list.nextId += 1;
   return task;
@@ -107,4 +110,23 @@ export function parseDueDate(value: string | undefined, now: Date): string {
     if (date.getFullYear() === y && date.getMonth() === mo - 1 && date.getDate() === d) return value!;
   }
   throw new Error(`Invalid due date${value === undefined ? "" : ` "${value}"`}. Use YYYY-MM-DD, today, or tomorrow.`);
+}
+
+const TAG = /^[a-z0-9][a-z0-9-]*$/;
+
+/**
+ * Parse tag arguments: each value may hold several comma-separated tags.
+ * Tags are lowercased; each must be letters, digits and hyphens (not starting with a hyphen).
+ */
+export function parseTags(values: readonly string[]): string[] {
+  const tags = values.flatMap((v) => v.split(",")).map((t) => t.trim().toLowerCase());
+  for (const t of tags) {
+    if (!TAG.test(t)) throw new Error(`Invalid tag "${t}". Tags are single words of letters, digits and hyphens, e.g. work or side-project.`);
+  }
+  return normaliseTags(tags);
+}
+
+/** Sorted, de-duplicated copy. */
+export function normaliseTags(tags: readonly string[]): string[] {
+  return [...new Set(tags)].sort();
 }

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-import { addTask, completeTask, isOverdue, localDate, parseDueDate, parsePriority, priorityOf, setDueDate, setPriority, sortTasks, type Task, type TaskPriority } from "../domain/task.ts";
+import { addTask, completeTask, isOverdue, localDate, parseDueDate, parsePriority, parseTags, priorityOf, setDueDate, setPriority, sortTasks, type Task, type TaskPriority } from "../domain/task.ts";
 import { defaultStorePath, load, save } from "../infrastructure/store.ts";
 
 const HELP = `todo — a local command-line todo list
 
 Usage:
-  todo add [--priority <high|medium|low>] [--due <date>] <title...>
+  todo add [--priority <high|medium|low>] [--due <date>] [--tag <tag>]... <title...>
                                                        Add a task (default: medium)
   todo list [--open | --done] [--json]                 List tasks, most important first
   todo done <id>                                       Mark a task as done
@@ -13,6 +13,8 @@ Usage:
   todo due <id> <date|none>                            Set or clear a task's due date
   todo help                                            Show this help
 
+<tag> is a word of letters, digits and hyphens (e.g. work); repeat --tag or
+use commas (--tag work,home) for several.
 <date> is YYYY-MM-DD, today, or tomorrow. Open tasks due before today are
 OVERDUE and listed first.
 
@@ -48,10 +50,13 @@ export function run(argv: string[], io: Io): number {
         const priorityArg = takeOption("--priority");
         const priority: TaskPriority = priorityArg === null ? "medium" : parsePriority(priorityArg);
         const dueArg = takeOption("--due");
+        const tagArgs: string[] = [];
+        for (let tagArg = takeOption("--tag"); tagArg !== null; tagArg = takeOption("--tag")) tagArgs.push(tagArg);
+        const tags = parseTags(tagArgs);
         const now = io.now();
         const dueDate = dueArg === null ? undefined : parseDueDate(dueArg, now);
         const list = load(path);
-        const task = addTask(list, titleParts.join(" "), now, priority, dueDate);
+        const task = addTask(list, titleParts.join(" "), now, priority, dueDate, tags);
         save(path, list);
         io.out(`Added #${task.id}: ${task.title}`);
         return 0;
