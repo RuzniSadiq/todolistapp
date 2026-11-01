@@ -641,3 +641,35 @@ test("help documents list --search (#31 AC5)", () => {
   assert.equal(h.exec("help"), 0);
   assert.match(h.out.join("\n"), /todo list .*\[--search <text>\]/);
 });
+
+test("list --search treats a following flag as a missing value (#31 AC4 edge)", () => {
+  const h = searchFixture();
+  const path = h.env.TODO_FILE!;
+  const before = readFileSync(path, "utf8");
+  for (const flag of ["--json", "--open", "--done"]) {
+    h.err.length = 0;
+    h.out.length = 0;
+    assert.equal(h.exec("list", "--search", flag), 1, flag);
+    assert.match(h.err.join("\n"), /Usage: todo list --search <text>/);
+    assert.deepEqual(h.out, []);
+  }
+  assert.equal(readFileSync(path, "utf8"), before);
+});
+
+test("list --search matches a multi-word phrase and trims surrounding spaces (#31 AC1 edge)", () => {
+  const h = searchFixture();
+  assert.equal(h.exec("list", "--search", "OAT MILK"), 0);
+  assert.deepEqual(h.out, ["[x]   #5 oat milk [work]"]);
+  h.out.length = 0;
+  assert.equal(h.exec("list", "--search", "  dog  "), 0);
+  assert.deepEqual(h.out, ["[ ]   #3 walk dog"]);
+  h.out.length = 0;
+  assert.equal(h.exec("list", "--search", "milk dog"), 0);
+  assert.deepEqual(h.out, ['No tasks match "milk dog".']);
+});
+
+test("list --search no-match message wins over the --tag message (#31 AC3 edge)", () => {
+  const h = searchFixture();
+  assert.equal(h.exec("list", "--tag", "home", "--search", "oat"), 0);
+  assert.deepEqual(h.out, ['No tasks match "oat".']);
+});

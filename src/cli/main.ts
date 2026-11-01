@@ -45,7 +45,8 @@ function parseSearch(rest: string[]): string | undefined {
   if (i === -1) return undefined;
   if (rest.indexOf("--search", i + 1) !== -1) throw new Error(usage);
   const text = rest[i + 1]?.trim() ?? "";
-  if (text === "") throw new Error(usage);
+  // A following flag (e.g. `--search --json`) means the value is missing.
+  if (text === "" || text.startsWith("--")) throw new Error(usage);
   return text;
 }
 
